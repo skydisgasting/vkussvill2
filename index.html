@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Выбор блюда ВкусВилл</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <p class="hero__eyebrow">Готовая еда ВкусВилл</p>
+      <h1>Подбор блюд с высоким белком</h1>
+      <p class="hero__text">
+        Белок для фильтра считается на всё блюдо. Рейтинг считается по формуле
+        <code>(общий белок / общие калории) * 100</code>.
+      </p>
+
+      <div class="hero__stats">
+        <div class="stat-card">
+          <span class="stat-card__label">В базе</span>
+          <strong class="stat-card__value" id="stat-products">0</strong>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label">Вариантов КБЖУ</span>
+          <strong class="stat-card__value" id="stat-variants">0</strong>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__label">Найдено сейчас</span>
+          <strong class="stat-card__value" id="stat-visible">0</strong>
+        </div>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="toolbar">
+        <p class="toolbar__status" id="status-text">Загрузка данных…</p>
+      </section>
+
+      <section class="cards-grid" id="cards-grid" aria-live="polite"></section>
+
+      <section class="empty-state hidden" id="empty-state">
+        <h2>Подходящих блюд не найдено</h2>
+        <p>
+          По текущим данным нет позиций, где во всём блюде белка больше 30 г
+          и вес можно надёжно пересчитать.
+        </p>
+      </section>
+
+      <div class="load-more-wrap">
+        <button class="secondary-button hidden" id="load-more-button" type="button">
+          Показать ещё
+        </button>
+      </div>
+    </main>
+  </div>
+
+  <template id="meal-card-template">
+    <article class="meal-card">
+      <a class="meal-card__image-link" target="_blank" rel="noreferrer">
+        <img class="meal-card__image" alt="" loading="lazy">
+      </a>
+      <div class="meal-card__body">
+        <div class="meal-card__topline">
+          <span class="meal-card__badge"></span>
+          <span class="meal-card__manufacturer"></span>
+        </div>
+        <h2 class="meal-card__title"></h2>
+        <p class="meal-card__totals"></p>
+        <div class="meal-card__metrics">
+          <div class="metric">
+            <span class="metric__label">Белки / 100 г</span>
+            <strong class="metric__value meal-card__protein"></strong>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Ккал / 100 г</span>
+            <strong class="metric__value meal-card__calories"></strong>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Жиры</span>
+            <strong class="metric__value meal-card__fats"></strong>
+          </div>
+          <div class="metric">
+            <span class="metric__label">Углеводы</span>
+            <strong class="metric__value meal-card__carbs"></strong>
+          </div>
+        </div>
+        <div class="meal-card__footer">
+          <div>
+            <span class="meal-card__score-label">КПД блюда</span>
+            <strong class="meal-card__score"></strong>
+          </div>
+          <a class="meal-card__link" target="_blank" rel="noreferrer">Открыть на сайте</a>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="data/meals-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

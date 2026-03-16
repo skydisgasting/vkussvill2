@@ -30,6 +30,7 @@ CACHE_DIR = ROOT_DIR / "cache"
 DETAIL_CACHE_PATH = CACHE_DIR / "product-details.json"
 PAYLOAD_CACHE_PATH = CACHE_DIR / "latest-meals.json"
 LEGACY_NUTRITION_DATA_PATH = ROOT_DIR / "data" / "meals-data.js"
+SEED_PAYLOAD_PATH = ROOT_DIR / "data" / "seed-meals.json"
 
 REQUEST_TIMEOUT = 25
 PAGE_WORKERS = 8
@@ -542,6 +543,15 @@ def save_payload_cache(payload: dict[str, Any]) -> None:
     )
 
 
+def load_seed_payload() -> dict[str, Any] | None:
+    if not SEED_PAYLOAD_PATH.exists():
+        return None
+    try:
+        return json.loads(SEED_PAYLOAD_PATH.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def save_detail_cache(cache: dict[str, dict[str, Any]]) -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     DETAIL_CACHE_PATH.write_text(
@@ -970,6 +980,16 @@ def get_payload_for_response() -> dict[str, Any]:
         payload = dict(cached_payload)
         payload.update(get_refresh_meta())
         payload["served_from_cache"] = True
+        payload["served_from_seed"] = False
+        return payload
+
+    seed_payload = load_seed_payload()
+    if seed_payload:
+        refresh_payload_in_background()
+        payload = dict(seed_payload)
+        payload.update(get_refresh_meta())
+        payload["served_from_cache"] = True
+        payload["served_from_seed"] = True
         return payload
 
     payload = build_payload()
@@ -977,6 +997,7 @@ def get_payload_for_response() -> dict[str, Any]:
     payload = dict(payload)
     payload.update(get_refresh_meta())
     payload["served_from_cache"] = False
+    payload["served_from_seed"] = False
     return payload
 
 

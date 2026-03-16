@@ -28,6 +28,7 @@ var state = {
   totalCatalogCount: 0,
   availableCount: 0,
   servedFromCache: false,
+  servedFromSeed: false,
   refreshing: false,
   refreshStartedAt: "",
   refreshFinishedAt: "",
@@ -52,6 +53,7 @@ window.__vkussvilMealsCallback__ = function (data) {
   state.totalCatalogCount = data.total_catalog_count || state.rows.length;
   state.availableCount = data.available_count || state.rows.length;
   state.servedFromCache = !!data.served_from_cache;
+  state.servedFromSeed = !!data.served_from_seed;
   state.refreshing = !!data.refreshing;
   state.refreshStartedAt = data.refresh_started_at || "";
   state.refreshFinishedAt = data.refresh_finished_at || "";
@@ -298,10 +300,16 @@ function buildStatusText() {
   }).format(new Date(state.parsedAt));
 
   if (state.servedFromCache && state.refreshing) {
+    if (state.servedFromSeed) {
+      return "Показана стартовая выгрузка из репозитория. Сервер параллельно обновляет каталог и остатки. Сортировка по КПД блюда.";
+    }
     return "Показана последняя сохранённая выгрузка от " + updatedAt + ". Сервер параллельно обновляет каталог и остатки. Сортировка по КПД блюда.";
   }
 
   if (state.servedFromCache) {
+    if (state.servedFromSeed) {
+      return "Показана стартовая выгрузка из репозитория. Сортировка по КПД блюда.";
+    }
     return "Показана сохранённая выгрузка от " + updatedAt + ". Сортировка по КПД блюда.";
   }
 

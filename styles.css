@@ -138,12 +138,43 @@ body {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 18px;
+  align-items: end;
+}
+
+.toolbar__copy {
+  display: grid;
+  gap: 6px;
+  max-width: 70ch;
+}
+
+.toolbar__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .toolbar__status,
 .toolbar__meta {
   margin: 0;
   color: var(--muted);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(76, 57, 35, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
 }
 
 .cards-grid {
@@ -205,6 +236,13 @@ body {
   text-align: right;
 }
 
+.meal-card__stock {
+  color: var(--accent-dark);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: right;
+}
+
 .meal-card__title {
   margin: 0;
   font-size: 1.14rem;
@@ -212,12 +250,12 @@ body {
   min-height: 3.2em;
 }
 
-.meal-card__totals {
+.meal-card__nutrition {
   margin: -2px 0 0;
-  color: var(--accent-dark);
+  color: var(--muted);
   font-size: 0.92rem;
   line-height: 1.35;
-  min-height: 2.5em;
+  min-height: 2.8em;
 }
 
 .meal-card__metrics {
@@ -309,6 +347,14 @@ body {
 
   .hero__stats {
     grid-template-columns: 1fr;
+  }
+
+  .toolbar__filters {
+    width: 100%;
+  }
+
+  .toggle {
+    width: 100%;
   }
 
   .cards-grid {

@@ -1,228 +1,516 @@
-const PAGE_SIZE = 24;
+var PAGE_SIZE = 24;
 
-const loadMoreButton = document.getElementById("load-more-button");
-const cardsGrid = document.getElementById("cards-grid");
-const emptyState = document.getElementById("empty-state");
-const statusText = document.getElementById("status-text");
-const statProducts = document.getElementById("stat-products");
-const statVariants = document.getElementById("stat-variants");
-const statVisible = document.getElementById("stat-visible");
-const template = document.getElementById("meal-card-template");
+var loadMoreButton = document.getElementById("load-more-button");
+var cardsGrid = document.getElementById("cards-grid");
+var emptyState = document.getElementById("empty-state");
+var emptyStateTitle = document.getElementById("empty-state-title");
+var emptyStateText = document.getElementById("empty-state-text");
+var statusText = document.getElementById("status-text");
+var addressText = document.getElementById("address-text");
+var statProducts = document.getElementById("stat-products");
+var statAvailable = document.getElementById("stat-available");
+var statVisible = document.getElementById("stat-visible");
+var protein30Toggle = document.getElementById("protein-30-toggle");
+var excludeSimpleToggle = document.getElementById("exclude-simple-toggle");
+var meatlessOnlyToggle = document.getElementById("meatless-only-toggle");
+var template = document.getElementById("meal-card-template");
+var API_SCRIPT_URL = window.location.protocol === "file:"
+  ? "http://127.0.0.1:8000/api/meals.js"
+  : "/api/meals.js";
 
-const state = {
+var state = {
   rows: [],
   visibleRows: [],
   limit: PAGE_SIZE,
-  scrapedAt: "",
-  productCount: 0,
-  variantCount: 0,
+  parsedAt: "",
+  address: "",
+  strategy: "",
+  totalCatalogCount: 0,
+  availableCount: 0,
+  servedFromCache: false,
+  refreshing: false,
+  refreshStartedAt: "",
+  refreshFinishedAt: "",
+  refreshLastError: "",
+  hasError: false,
+  activeScript: null,
+  loadTimeoutId: 0
 };
 
-loadMoreButton.addEventListener("click", () => {
-  state.limit += PAGE_SIZE;
-  renderCards();
-});
+window.__vkussvilMealsCallback__ = function (data) {
+  clearPendingLoad();
 
-loadData();
-
-function loadData() {
-  const data = window.MEALS_DATA;
-  if (!data) {
-    statusText.textContent = "Не удалось загрузить данные каталога.";
-    emptyState.classList.remove("hidden");
+  if (data && data.error) {
+    applyLoadError(new Error(data.details || data.error));
     return;
   }
 
-  state.rows = flattenProducts(data.products ?? []);
-  state.scrapedAt = data.scraped_at ?? "";
-  state.productCount = data.product_count ?? 0;
-  state.variantCount = data.variant_count ?? state.rows.length;
+  state.rows = data.products || [];
+  state.parsedAt = data.parsed_at || "";
+  state.address = data.address || "";
+  state.strategy = data.shop_strategy || "";
+  state.totalCatalogCount = data.total_catalog_count || state.rows.length;
+  state.availableCount = data.available_count || state.rows.length;
+  state.servedFromCache = !!data.served_from_cache;
+  state.refreshing = !!data.refreshing;
+  state.refreshStartedAt = data.refresh_started_at || "";
+  state.refreshFinishedAt = data.refresh_finished_at || "";
+  state.refreshLastError = data.refresh_last_error || "";
+  state.hasError = false;
 
-  statProducts.textContent = formatNumber(state.productCount);
-  statVariants.textContent = formatNumber(state.variantCount);
+  statProducts.textContent = formatNumber(state.totalCatalogCount);
+  statAvailable.textContent = formatNumber(state.availableCount);
 
   render();
+};
+
+boot();
+
+function boot() {
+  try {
+    ensureElements();
+
+    loadMoreButton.addEventListener("click", function () {
+      state.limit += PAGE_SIZE;
+      renderCards();
+    });
+
+    protein30Toggle.addEventListener("change", function () {
+      state.limit = PAGE_SIZE;
+      render();
+    });
+
+    excludeSimpleToggle.addEventListener("change", function () {
+      state.limit = PAGE_SIZE;
+      render();
+    });
+
+    meatlessOnlyToggle.addEventListener("change", function () {
+      state.limit = PAGE_SIZE;
+      render();
+    });
+
+    window.addEventListener("error", function (event) {
+      if (event && event.filename && event.filename.indexOf("api/meals.js") !== -1) {
+        return;
+      }
+      showFatalError("Ошибка JavaScript: " + getErrorMessage(event.error || event.message));
+    });
+
+    loadData();
+  } catch (error) {
+    showFatalError("Не удалось инициализировать страницу: " + getErrorMessage(error));
+  }
 }
 
-function flattenProducts(products) {
-  const rows = [];
+function ensureElements() {
+  var missing = [];
+  var required = {
+    loadMoreButton: loadMoreButton,
+    cardsGrid: cardsGrid,
+    emptyState: emptyState,
+    emptyStateTitle: emptyStateTitle,
+    emptyStateText: emptyStateText,
+    statusText: statusText,
+    addressText: addressText,
+    statProducts: statProducts,
+    statAvailable: statAvailable,
+    statVisible: statVisible,
+    protein30Toggle: protein30Toggle,
+    excludeSimpleToggle: excludeSimpleToggle,
+    meatlessOnlyToggle: meatlessOnlyToggle,
+    template: template
+  };
+  var key;
 
-  for (const product of products) {
-    for (const variant of product.variants ?? []) {
-      const cleanWeight = normalizeWeightText(product.weight || "");
-      const weightGrams = parseWeightToGrams(cleanWeight);
-      const totalProtein = weightGrams ? Number(variant.protein) * weightGrams / 100 : null;
-      const totalCalories = weightGrams ? Number(variant.calories) * weightGrams / 100 : null;
-      const totalScore = totalProtein && totalCalories
-        ? (totalProtein / totalCalories) * 100
-        : null;
-
-      rows.push({
-        title: product.title,
-        weight: cleanWeight,
-        weightGrams,
-        url: product.url,
-        imageUrl: product.image_url || "",
-        manufacturer: variant.manufacturer || "Без уточнения",
-        protein: Number(variant.protein),
-        fats: Number(variant.fats),
-        carbs: Number(variant.carbs),
-        calories: Number(variant.calories),
-        totalProtein,
-        totalCalories,
-        totalScore,
-      });
+  for (key in required) {
+    if (required.hasOwnProperty(key) && !required[key]) {
+      missing.push(key);
     }
   }
 
-  return rows
-    .filter((row) => row.totalProtein !== null && row.totalCalories !== null && row.totalProtein > 30)
-    .sort(compareRowsByScore);
+  if (missing.length) {
+    throw new Error("В DOM не найдены элементы: " + missing.join(", "));
+  }
+}
+
+function loadData() {
+  statusText.textContent = "Обновляем каталог и остатки ВкусВилл…";
+  addressText.textContent = "Отправляем запрос к локальному серверу.";
+  state.hasError = false;
+  emptyStateTitle.textContent = "Подходящих блюд не найдено";
+  emptyStateText.textContent = "Проверяем каталог и наличие по выбранному адресу.";
+
+  statProducts.textContent = "0";
+  statAvailable.textContent = "0";
+  statVisible.textContent = "0";
+
+  clearPendingLoad();
+  requestDataByScript();
+}
+
+function requestDataByScript() {
+  var script = document.createElement("script");
+  var timeoutMs = 360000;
+
+  script.src = API_SCRIPT_URL + "?ts=" + Date.now();
+  script.async = true;
+  script.onerror = function () {
+    clearPendingLoad();
+    applyLoadError(new Error("Браузер не смог загрузить /api/meals.js"));
+  };
+
+  state.activeScript = script;
+  state.loadTimeoutId = window.setTimeout(function () {
+    clearPendingLoad();
+    applyLoadError(new Error("Сервер слишком долго отвечает на /api/meals.js"));
+  }, timeoutMs);
+
+  document.head.appendChild(script);
+}
+
+function clearPendingLoad() {
+  if (state.loadTimeoutId) {
+    window.clearTimeout(state.loadTimeoutId);
+    state.loadTimeoutId = 0;
+  }
+
+  if (state.activeScript && state.activeScript.parentNode) {
+    state.activeScript.parentNode.removeChild(state.activeScript);
+  }
+
+  state.activeScript = null;
+}
+
+function applyLoadError(error) {
+  state.hasError = true;
+  state.rows = [];
+  state.visibleRows = [];
+  statProducts.textContent = "0";
+  statAvailable.textContent = "0";
+  statVisible.textContent = "0";
+  cardsGrid.innerHTML = "";
+  addClass(cardsGrid, "hidden");
+  removeClass(emptyState, "hidden");
+  emptyStateTitle.textContent = "Не удалось загрузить карточки";
+  emptyStateText.textContent = buildLoadErrorText(error);
+  statusText.textContent = "Не удалось загрузить данные: " + getErrorMessage(error);
+  addressText.textContent = buildLoadHint();
 }
 
 function render() {
-  state.visibleRows = [...state.rows].sort(compareRowsByScore);
+  state.visibleRows = state.rows.slice().filter(matchesFilters).sort(compareRows);
+
   statVisible.textContent = formatNumber(state.visibleRows.length);
-  statusText.textContent = "Показаны только блюда с белком больше 30 г, отсортированные по КПД блюда.";
+  statusText.textContent = buildStatusText();
+  addressText.textContent = buildAddressText();
 
   renderCards();
 }
 
-function renderCards() {
-  cardsGrid.innerHTML = "";
-
-  const shownRows = state.visibleRows.slice(0, state.limit);
-  emptyState.classList.toggle("hidden", state.visibleRows.length > 0);
-  cardsGrid.classList.toggle("hidden", state.visibleRows.length === 0);
-
-  for (const row of shownRows) {
-    cardsGrid.append(createCard(row));
+function matchesFilters(row) {
+  if (protein30Toggle.checked && !hasMoreThan30Protein(row)) {
+    return false;
   }
 
-  loadMoreButton.classList.toggle("hidden", state.visibleRows.length <= shownRows.length);
+  if (excludeSimpleToggle.checked && row.is_simple_dish) {
+    return false;
+  }
+
+  if (meatlessOnlyToggle.checked && !row.is_meatless) {
+    return false;
+  }
+
+  return true;
+}
+
+function renderCards() {
+  var shownRows = state.visibleRows.slice(0, state.limit);
+  var showEmptyState = state.hasError || state.visibleRows.length === 0;
+  var index;
+
+  cardsGrid.innerHTML = "";
+
+  if (!state.hasError) {
+    emptyStateTitle.textContent = "Подходящих блюд не найдено";
+    emptyStateText.textContent = "По текущим данным нет блюд, которые одновременно подходят под выбранные фильтры и есть в наличии.";
+  }
+
+  toggleClass(emptyState, "hidden", !showEmptyState);
+  toggleClass(cardsGrid, "hidden", showEmptyState);
+
+  for (index = 0; index < shownRows.length; index += 1) {
+    cardsGrid.appendChild(createCard(shownRows[index]));
+  }
+
+  toggleClass(loadMoreButton, "hidden", state.visibleRows.length <= shownRows.length);
 }
 
 function createCard(row) {
-  const node = template.content.firstElementChild.cloneNode(true);
-
-  const imageLink = node.querySelector(".meal-card__image-link");
-  const image = node.querySelector(".meal-card__image");
-  const badge = node.querySelector(".meal-card__badge");
-  const manufacturer = node.querySelector(".meal-card__manufacturer");
-  const title = node.querySelector(".meal-card__title");
-  const totals = node.querySelector(".meal-card__totals");
-  const protein = node.querySelector(".meal-card__protein");
-  const calories = node.querySelector(".meal-card__calories");
-  const fats = node.querySelector(".meal-card__fats");
-  const carbs = node.querySelector(".meal-card__carbs");
-  const score = node.querySelector(".meal-card__score");
-  const link = node.querySelector(".meal-card__link");
+  var node = template.content.firstElementChild.cloneNode(true);
+  var imageLink = node.querySelector(".meal-card__image-link");
+  var image = node.querySelector(".meal-card__image");
+  var badge = node.querySelector(".meal-card__badge");
+  var manufacturer = node.querySelector(".meal-card__manufacturer");
+  var title = node.querySelector(".meal-card__title");
+  var nutrition = node.querySelector(".meal-card__nutrition");
+  var price = node.querySelector(".meal-card__price");
+  var quantity = node.querySelector(".meal-card__quantity");
+  var proteinTotal = node.querySelector(".meal-card__protein-total");
+  var caloriesTotal = node.querySelector(".meal-card__calories-total");
+  var score = node.querySelector(".meal-card__score");
+  var link = node.querySelector(".meal-card__link");
 
   imageLink.href = row.url;
   link.href = row.url;
   badge.textContent = row.weight || "Вес не указан";
-  manufacturer.textContent = row.manufacturer;
+  manufacturer.textContent = row.manufacturer || "Без уточнения";
   title.textContent = row.title;
-  totals.textContent = formatTotals(row);
-  protein.textContent = formatMetric(row.protein);
-  calories.textContent = formatMetric(row.calories);
-  fats.textContent = formatMetric(row.fats);
-  carbs.textContent = formatMetric(row.carbs);
-  score.textContent = row.totalScore !== null ? row.totalScore.toFixed(3) : "n/a";
+  nutrition.textContent = formatNutritionPer100(row);
+  nutrition.title = row.composition || "Состав не найден";
+  price.textContent = formatPrice(row.price);
+  quantity.textContent = row.stock_quantity ? row.stock_quantity + " шт" : (row.stock_text || "В наличии");
+  proteinTotal.textContent = formatTotalProtein(row.total_protein);
+  caloriesTotal.textContent = formatTotalCalories(row.total_calories);
+  score.textContent = formatScore(row.total_score);
 
-  if (row.imageUrl) {
-    image.src = row.imageUrl;
+  if (row.image_url) {
+    image.src = row.image_url;
     image.alt = row.title;
   } else {
+    image.removeAttribute("src");
     image.alt = row.title;
   }
 
   return node;
 }
 
-function formatMetric(value) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+function buildStatusText() {
+  var updatedAt;
+
+  if (!state.parsedAt) {
+    return "Каталог загружен.";
+  }
+
+  updatedAt = new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "short",
+    timeStyle: "medium"
+  }).format(new Date(state.parsedAt));
+
+  if (state.servedFromCache && state.refreshing) {
+    return "Показана последняя сохранённая выгрузка от " + updatedAt + ". Сервер параллельно обновляет каталог и остатки. Сортировка по КПД блюда.";
+  }
+
+  if (state.servedFromCache) {
+    return "Показана сохранённая выгрузка от " + updatedAt + ". Сортировка по КПД блюда.";
+  }
+
+  return "Каталог и остатки обновлены " + updatedAt + ". Сортировка по КПД блюда.";
+}
+
+function buildAddressText() {
+  if (!state.address) {
+    return "";
+  }
+
+  if (!state.strategy) {
+    return "Адрес: " + state.address + ".";
+  }
+
+  return "Адрес: " + state.address + ". " + state.strategy;
+}
+
+function buildLoadHint() {
+  if (window.location.protocol === "file:") {
+    return "Страница открыта как файл. Запустите `python server.py` и откройте `http://127.0.0.1:8000`.";
+  }
+
+  return "Проверьте окно сервера: после открытия страницы там должен появиться GET /api/meals.js.";
+}
+
+function buildLoadErrorText(error) {
+  if (window.location.protocol === "file:") {
+    return "Страница открыта напрямую из файла. Если сервер уже запущен, откройте именно `http://127.0.0.1:8000`, а не локальный html-файл.";
+  }
+
+  return "Ошибка загрузки: " + getErrorMessage(error);
+}
+
+function showFatalError(message) {
+  if (statusText) {
+    statusText.textContent = message;
+  }
+
+  if (addressText) {
+    addressText.textContent = buildLoadHint();
+  }
+
+  if (emptyStateTitle) {
+    emptyStateTitle.textContent = "Ошибка интерфейса";
+  }
+
+  if (emptyStateText) {
+    emptyStateText.textContent = message;
+  }
+
+  if (cardsGrid) {
+    cardsGrid.innerHTML = "";
+    addClass(cardsGrid, "hidden");
+  }
+
+  if (emptyState) {
+    removeClass(emptyState, "hidden");
+  }
+}
+
+function compareRows(left, right) {
+  var leftScore = typeof left.total_score === "number" ? left.total_score : Number.NEGATIVE_INFINITY;
+  var rightScore = typeof right.total_score === "number" ? right.total_score : Number.NEGATIVE_INFINITY;
+  var leftCalories;
+  var rightCalories;
+  var leftProtein;
+  var rightProtein;
+
+  if (leftScore !== rightScore) {
+    return rightScore - leftScore;
+  }
+
+  leftCalories = typeof left.total_calories === "number" ? left.total_calories : Number.POSITIVE_INFINITY;
+  rightCalories = typeof right.total_calories === "number" ? right.total_calories : Number.POSITIVE_INFINITY;
+  if (leftCalories !== rightCalories) {
+    return leftCalories - rightCalories;
+  }
+
+  leftProtein = typeof left.total_protein === "number" ? left.total_protein : Number.NEGATIVE_INFINITY;
+  rightProtein = typeof right.total_protein === "number" ? right.total_protein : Number.NEGATIVE_INFINITY;
+  if (leftProtein !== rightProtein) {
+    return rightProtein - leftProtein;
+  }
+
+  return left.title.localeCompare(right.title, "ru");
 }
 
 function formatNumber(value) {
   return new Intl.NumberFormat("ru-RU").format(value);
 }
 
-function formatTotals(row) {
-  if (row.totalProtein === null || row.totalCalories === null) {
-    return "Общий белок и калории не рассчитаны: в весе нет точных граммов.";
+function formatPrice(value) {
+  if (typeof value !== "number") {
+    return "Цена не найдена";
   }
 
-  return `Во всём блюде: ${formatMetric(row.totalProtein)} г белка, ${formatMetric(row.totalCalories)} ккал`;
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    maximumFractionDigits: 0
+  }).format(value);
 }
 
-function compareRowsByScore(left, right) {
-  const leftScore = left.totalScore ?? -Infinity;
-  const rightScore = right.totalScore ?? -Infinity;
-
-  if (leftScore !== rightScore) {
-    return rightScore - leftScore;
+function formatNutritionPer100(row) {
+  if (
+    typeof row.protein_per_100 !== "number" ||
+    typeof row.fats_per_100 !== "number" ||
+    typeof row.carbs_per_100 !== "number" ||
+    typeof row.calories_per_100 !== "number"
+  ) {
+    return "КБЖУ на 100 г: нет данных";
   }
 
-  const leftCalories = left.totalCalories ?? Infinity;
-  const rightCalories = right.totalCalories ?? Infinity;
-  if (leftCalories !== rightCalories) {
-    return leftCalories - rightCalories;
-  }
-
-  const leftProtein = left.totalProtein ?? -Infinity;
-  const rightProtein = right.totalProtein ?? -Infinity;
-  return rightProtein - leftProtein;
+  return "КБЖУ на 100 г: "
+    + formatMetric(row.calories_per_100)
+    + " ккал • Б "
+    + formatMetric(row.protein_per_100)
+    + " • Ж "
+    + formatMetric(row.fats_per_100)
+    + " • У "
+    + formatMetric(row.carbs_per_100);
 }
 
-function parseWeightToGrams(weightText) {
-  const normalized = String(weightText).replace(",", ".").toLowerCase();
-
-  if (!normalized) {
-    return null;
+function formatTotalProtein(value) {
+  if (typeof value !== "number") {
+    return "Нет данных";
   }
 
-  const kgMatch = normalized.match(/(\d+(?:\.\d+)?)\s*кг(?:\s|$)/);
-  if (kgMatch) {
-    return Number(kgMatch[1]) * 1000;
-  }
-
-  const gramMatch = normalized.match(/(\d+(?:\.\d+)?)\s*г(?:\s|$)/);
-  if (gramMatch) {
-    return Number(gramMatch[1]);
-  }
-
-  return null;
+  return formatMetric(value) + " г";
 }
 
-function normalizeWeightText(weightText) {
-  const normalized = String(weightText).replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return "";
+function formatTotalCalories(value) {
+  if (typeof value !== "number") {
+    return "Нет данных";
   }
 
-  const markerIndex = normalized.search(/\s(?:Как приготовить|Важные детали|Способ приготовления)\b/i);
-  const cut = markerIndex >= 0 ? normalized.slice(0, markerIndex) : normalized;
+  return formatMetric(value) + " ккал";
+}
 
-  const compact = cut.trim();
-  if (!compact) {
-    return "";
+function formatScore(value) {
+  if (typeof value !== "number") {
+    return "Нет данных";
   }
 
-  const kgMatch = compact.match(/(\d+(?:[.,]\d+)?)\s*кг/i);
-  if (kgMatch) {
-    return `${kgMatch[1].replace(".", ",")} кг`;
+  return value.toFixed(3);
+}
+
+function formatMetric(value) {
+  if (Math.round(value * 10) / 10 === Math.round(value)) {
+    return String(Math.round(value));
   }
 
-  const gramMatch = compact.match(/(\d+(?:[.,]\d+)?)\s*г/i);
-  if (gramMatch) {
-    return `${gramMatch[1].replace(".", ",")} г`;
+  return value.toFixed(1);
+}
+
+function hasMoreThan30Protein(row) {
+  return typeof row.total_protein === "number" && row.total_protein > 30;
+}
+
+function getErrorMessage(error) {
+  if (!error) {
+    return "Неизвестная ошибка";
   }
 
-  const piecesMatch = compact.match(/(\d+(?:[.,]\d+)?)\s*шт/i);
-  if (piecesMatch) {
-    return `${piecesMatch[1].replace(".", ",")} шт`;
+  if (typeof error === "string") {
+    return error;
   }
 
-  return compact;
+  if (error.message) {
+    return error.message;
+  }
+
+  try {
+    return String(error);
+  } catch (stringifyError) {
+    return "Неизвестная ошибка";
+  }
+}
+
+function toggleClass(node, className, shouldAdd) {
+  if (!node) {
+    return;
+  }
+
+  if (shouldAdd) {
+    addClass(node, className);
+  } else {
+    removeClass(node, className);
+  }
+}
+
+function addClass(node, className) {
+  if (node && !hasClass(node, className)) {
+    node.className += (node.className ? " " : "") + className;
+  }
+}
+
+function removeClass(node, className) {
+  var pattern;
+
+  if (!node) {
+    return;
+  }
+
+  pattern = new RegExp("(^|\\s)" + className + "(?=\\s|$)", "g");
+  node.className = node.className.replace(pattern, " ").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, "");
+}
+
+function hasClass(node, className) {
+  return (" " + node.className + " ").indexOf(" " + className + " ") >= 0;
 }

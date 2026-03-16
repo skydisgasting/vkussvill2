@@ -1048,7 +1048,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    host = os.getenv("HOST", "127.0.0.1")
+    host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     server = ThreadingHTTPServer((host, port), AppHandler)
     print(f"Serving on http://{host}:{port}")
